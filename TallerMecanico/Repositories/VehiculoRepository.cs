@@ -1,182 +1,91 @@
-﻿using Microsoft.Data.SqlClient;
+﻿using Microsoft.EntityFrameworkCore;
+using TallerMecanico.Data;
 using TallerMecanico.Models;
 
 namespace TallerMecanico.Repositories
 {
     public class VehiculoRepository
     {
-        private readonly string _connectionString;
+        // Ya no usamos string _connectionString, ahora inyectamos el DbContext
+        private readonly TallerMecanicoContext _context;
 
-        public VehiculoRepository(IConfiguration configuration)
+        public VehiculoRepository(TallerMecanicoContext context)
         {
-            _connectionString =
-                configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "No se configuró DefaultConnection.");
+            _context = context;
         }
 
+        // GET: api/vehiculos
         public async Task<List<Vehiculo>> ObtenerTodosAsync()
         {
-            var lista = new List<Vehiculo>();
-
-            const string sql = """
-                SELECT Id, ClienteId, Marca, Modelo, Anio, Placa, FechaRegistro
-                FROM Vehiculos
-                ORDER BY Id;
-                """;
-
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-
-            await using var command = new SqlCommand(sql, connection);
-            await using var reader = await command.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                lista.Add(new Vehiculo
-                {
-                    Id = reader.GetInt32(0),
-                    ClienteId = reader.GetInt32(1),
-                    Marca = reader.GetString(2),
-                    Modelo = reader.GetString(3),
-                    Anio = reader.GetInt32(4),
-                    Placa = reader.GetString(5),
-                    FechaRegistro = reader.GetDateTime(6)
-                });
-            }
-
-            return lista;
+            // El ORM traduce esto a: SELECT * FROM Vehiculos
+            return await _context.Vehiculos.ToListAsync();
         }
 
-        // Extra útil: vehículos de un cliente específico
+        // GET: api/vehiculos/cliente/3
         public async Task<List<Vehiculo>> ObtenerPorClienteAsync(int clienteId)
         {
-            var lista = new List<Vehiculo>();
-
-            const string sql = """
-                SELECT Id, ClienteId, Marca, Modelo, Anio, Placa, FechaRegistro
-                FROM Vehiculos
-                WHERE ClienteId = @ClienteId
-                ORDER BY Id;
-                """;
-
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-
-            await using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@ClienteId", clienteId);
-
-            await using var reader = await command.ExecuteReaderAsync();
-
-            while (await reader.ReadAsync())
-            {
-                lista.Add(new Vehiculo
-                {
-                    Id = reader.GetInt32(0),
-                    ClienteId = reader.GetInt32(1),
-                    Marca = reader.GetString(2),
-                    Modelo = reader.GetString(3),
-                    Anio = reader.GetInt32(4),
-                    Placa = reader.GetString(5),
-                    FechaRegistro = reader.GetDateTime(6)
-                });
-            }
-
-            return lista;
+            // El ORM traduce esto a: SELECT * FROM Vehiculos WHERE ClienteId = @clienteId
+            return await _context.Vehiculos
+                .Where(v => v.ClienteId == clienteId)
+                .ToListAsync();
         }
 
+        // GET: api/vehiculos/5
         public async Task<Vehiculo?> ObtenerPorIdAsync(int id)
         {
-            const string sql = """
-                SELECT Id, ClienteId, Marca, Modelo, Anio, Placa, FechaRegistro
-                FROM Vehiculos
-                WHERE Id = @Id;
-                """;
-
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
-
-            await using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@Id", id);
-
-            await using var reader = await command.ExecuteReaderAsync();
-
-            if (!await reader.ReadAsync())
-                return null;
-
-            return new Vehiculo
-            {
-                Id = reader.GetInt32(0),
-                ClienteId = reader.GetInt32(1),
-                Marca = reader.GetString(2),
-                Modelo = reader.GetString(3),
-                Anio = reader.GetInt32(4),
-                Placa = reader.GetString(5),
-                FechaRegistro = reader.GetDateTime(6)
-            };
+            // El ORM traduce esto a: SELECT TOP 1 * FROM Vehiculos WHERE Id = @id
+            return await _context.Vehiculos
+                .FirstOrDefaultAsync(v => v.Id == id);
         }
 
+        // POST: api/vehiculos
         public async Task<int> CrearAsync(Vehiculo vehiculo)
         {
-            const string sql = """
-                INSERT INTO Vehiculos (ClienteId, Marca, Modelo, Anio, Placa)
-                OUTPUT INSERTED.Id
-                VALUES (@ClienteId, @Marca, @Modelo, @Anio, @Placa);
-                """;
+            // 1. Preparamos el INSERT en memoria
+            _context.Vehiculos.Add(vehiculo);
 
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
+            // 2. Ejecutamos el INSERT real en SQL Server
+            await _context.SaveChangesAsync();
 
-            await using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@ClienteId", vehiculo.ClienteId);
-            command.Parameters.AddWithValue("@Marca", vehiculo.Marca);
-            command.Parameters.AddWithValue("@Modelo", vehiculo.Modelo);
-            command.Parameters.AddWithValue("@Anio", vehiculo.Anio);
-            command.Parameters.AddWithValue("@Placa", vehiculo.Placa);
-
-            var resultado = await command.ExecuteScalarAsync();
-            return Convert.ToInt32(resultado);
+            // 3. El ORM asigna automáticamente el ID generado a la propiedad vehiculo.Id
+            return vehiculo.Id;
         }
 
+        // PUT: api/vehiculos/5
         public async Task<bool> ActualizarAsync(Vehiculo vehiculo)
         {
-            const string sql = """
-                UPDATE Vehiculos
-                SET ClienteId = @ClienteId,
-                    Marca     = @Marca,
-                    Modelo    = @Modelo,
-                    Anio      = @Anio,
-                    Placa     = @Placa
-                WHERE Id = @Id;
-                """;
+            // Verificamos si el vehículo realmente existe antes de intentar actualizarlo
+            bool existe = await _context.Vehiculos.AnyAsync(v => v.Id == vehiculo.Id);
 
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
+            if (!existe)
+                return false;
 
-            await using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@Id", vehiculo.Id);
-            command.Parameters.AddWithValue("@ClienteId", vehiculo.ClienteId);
-            command.Parameters.AddWithValue("@Marca", vehiculo.Marca);
-            command.Parameters.AddWithValue("@Modelo", vehiculo.Modelo);
-            command.Parameters.AddWithValue("@Anio", vehiculo.Anio);
-            command.Parameters.AddWithValue("@Placa", vehiculo.Placa);
+            // Le decimos al ORM que este objeto fue modificado (UPDATE)
+            _context.Vehiculos.Update(vehiculo);
 
-            int filas = await command.ExecuteNonQueryAsync();
-            return filas > 0;
+            // Guardamos los cambios
+            await _context.SaveChangesAsync();
+
+            return true;
         }
 
+        // DELETE: api/vehiculos/5
         public async Task<bool> EliminarAsync(int id)
         {
-            const string sql = "DELETE FROM Vehiculos WHERE Id = @Id;";
+            // Buscamos el vehículo por su ID
+            var vehiculo = await _context.Vehiculos.FindAsync(id);
 
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
+            // Si no existe, retornamos false (el controller responderá 404)
+            if (vehiculo == null)
+                return false;
 
-            await using var command = new SqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@Id", id);
+            // Le decimos al ORM que lo borre (DELETE)
+            _context.Vehiculos.Remove(vehiculo);
 
-            int filas = await command.ExecuteNonQueryAsync();
-            return filas > 0;
+            // Ejecutamos el DELETE en la base de datos
+            await _context.SaveChangesAsync();
+
+            return true;
         }
     }
 }

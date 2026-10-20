@@ -1,33 +1,29 @@
+using Microsoft.EntityFrameworkCore;
+using TallerMecanico.Data;
 using TallerMecanico.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-// Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-// Registramos los repositorios con inyección de dependencias.
-// AddScoped => una instancia nueva por cada petición HTTP.
+// 👇 NUEVO: Registrar el DbContext (El ORM)
+builder.Services.AddDbContext<TallerMecanicoContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 builder.Services.AddScoped<ClienteRepository>();
 builder.Services.AddScoped<VehiculoRepository>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
