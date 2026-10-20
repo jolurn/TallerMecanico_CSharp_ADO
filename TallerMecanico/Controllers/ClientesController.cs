@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TallerMecanico.Models;
 using TallerMecanico.Repositories;
 
@@ -86,15 +87,25 @@ namespace TallerMecanico.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Eliminar(int id)
         {
-            if (id <= 0)
-                return BadRequest(new { mensaje = "ID inválido." });
+            if (id <= 0) return BadRequest(new { mensaje = "ID inválido." });
 
-            bool eliminado = await _repository.EliminarAsync(id);
+            // 👇 Envolvemos la llamada en un try-catch
+            try
+            {
+                bool eliminado = await _repository.EliminarAsync(id);
 
-            if (!eliminado)
-                return NotFound(new { mensaje = "Cliente no encontrado." });
+                if (!eliminado)
+                    return NotFound(new { mensaje = "Mecánico no encontrado." });
 
-            return NoContent();
+                return NoContent();
+            }
+            catch (DbUpdateException)
+            {
+                return BadRequest(new
+                {
+                    mensaje = "No se puede eliminar el cliente porque tiene vehículos registrados."
+                });
+            }
         }
     }
 }
